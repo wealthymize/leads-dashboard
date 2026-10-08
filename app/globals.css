@@ -221,6 +221,18 @@ button {
   align-items: flex-end;
 }
 
+.scope-pill {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  background: var(--neutral-bg);
+  color: var(--neutral);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .field {
   display: flex;
   flex-direction: column;

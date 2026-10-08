@@ -234,6 +234,12 @@ function downloadCsv(filename: string, csv: string) {
   URL.revokeObjectURL(url);
 }
 
+function abandonedOnly(result: PanelResult): PanelResult {
+  const items = result.items.filter((item) => String(item.status ?? "").toUpperCase() === "ABANDONED");
+  if (items.length === result.items.length) return result;
+  return { ...result, items, total: items.length };
+}
+
 function totalCaption(result: PanelResult) {
   if (!result.loadedAt) return result.status === "loading" ? "Loading" : "Not loaded";
   if (result.total === null) return "Total was not in the response";
@@ -477,7 +483,7 @@ function LeadPanel({
             {result.items.length === 0 ? (
               <div className="empty">
                 <strong>No leads matched</strong>
-                <p>Try another range, status, or date.</p>
+                <p>Try another range or date.</p>
               </div>
             ) : (
               <div className="table-wrap">
@@ -609,11 +615,11 @@ export function Dashboard() {
     limit: "10",
   });
   const [partialDraft, setPartialDraft] = useState({
-    status: "",
     startDate: "",
     endDate: "",
     limit: "10",
   });
+  const abandonedPartial = abandonedOnly(partial);
 
   function switchTab(next: TabId) {
     setTab(next);
@@ -637,7 +643,12 @@ export function Dashboard() {
       <main className="page">
         <section className="metrics" aria-label="Lead totals">
           <Metric label="Signup leads" result={signup} active={tab === "signup"} onClick={() => switchTab("signup")} />
-          <Metric label="Partial leads" result={partial} active={tab === "partial"} onClick={() => switchTab("partial")} />
+          <Metric
+            label="Partial leads"
+            result={abandonedPartial}
+            active={tab === "partial"}
+            onClick={() => switchTab("partial")}
+          />
         </section>
 
         <section className="board">
@@ -666,7 +677,9 @@ export function Dashboard() {
               onClick={() => switchTab("partial")}
             >
               Partial leads
-              <span className="tab-count">{partial.total === null ? "—" : partial.total.toLocaleString()}</span>
+              <span className="tab-count">
+                {abandonedPartial.total === null ? "—" : abandonedPartial.total.toLocaleString()}
+              </span>
             </button>
           </div>
 
@@ -749,26 +762,19 @@ export function Dashboard() {
               title="Partial leads"
               endpoint="/api/partial-leads"
               filename="partial-leads"
-              result={partial}
+              result={abandonedPartial}
               onResult={setPartial}
               selectedKey={selected?.tab === "partial" ? selected.key : null}
               onSelect={(lead, key) => setSelected({ tab: "partial", lead, key })}
               buildQuery={(page) => ({
                 page: String(page),
                 limit: partialDraft.limit,
-                status: partialDraft.status,
+                status: "ABANDONED",
                 startDate: partialDraft.startDate,
                 endDate: partialDraft.endDate,
               })}
             >
-              <Field label="Status">
-                <select
-                  value={partialDraft.status}
-                  onChange={(event) => setPartialDraft((draft) => ({ ...draft, status: event.target.value }))}
-                >
-                  <option value="ABANDONED">Abandoned</option>
-                </select>
-              </Field>
+              <span className="scope-pill">Abandoned only</span>
               <Field label="From">
                 <input
                   type="date"
