@@ -766,9 +766,6 @@ export function Dashboard() {
                   value={partialDraft.status}
                   onChange={(event) => setPartialDraft((draft) => ({ ...draft, status: event.target.value }))}
                 >
-                  <option value="">All</option>
-                  <option value="PENDING">Pending</option>
-                  <option value="CONVERTED">Converted</option>
                   <option value="ABANDONED">Abandoned</option>
                 </select>
               </Field>
