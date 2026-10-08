@@ -267,7 +267,7 @@ function LeadDrawer({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const contact = [
+  const contactFields: Array<[string, unknown]> = [
     ["Email", lead.email],
     ["Phone", [lead.countryCode, lead.phoneNumber].filter(Boolean).join(" ")],
     ["Profession", lead.profession],
@@ -277,7 +277,8 @@ function LeadDrawer({
     ["Signed up", lead.learnerCreatedAt],
     ["Created", lead.createdAt],
     ["Updated", lead.updatedAt],
-  ].filter(([, value]) => value != null && value !== "");
+  ];
+  const contact = contactFields.filter(([, value]) => value != null && value !== "");
 
   return (
     <>
