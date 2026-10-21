@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, Fragment, useRef, useState } from "react";
 import { toCsv } from "@/lib/csv";
 
 type LeadItem = Record<string, unknown>;
@@ -30,14 +30,14 @@ const EMPTY: PanelResult = {
 };
 
 const TABLE_COLUMNS = [
+  "learnerCreatedAt",
+  "createdAt",
   "name",
   "email",
   "phoneNumber",
   "status",
   "utm_source",
   "route",
-  "learnerCreatedAt",
-  "createdAt",
   "updatedAt",
 ];
 
@@ -71,6 +71,8 @@ const EXPORT_COLUMNS = [
 const HIDDEN_COLUMNS = new Set(["password", "token", "accessToken", "refreshToken", "otp", "__v"]);
 
 const COLUMN_LABELS: Record<string, string> = {
+  learnerCreatedAt: "Time",
+  createdAt: "Time",
   phoneNumber: "Phone",
   countryCode: "Country code",
   utm_source: "Source",
@@ -82,9 +84,7 @@ const COLUMN_LABELS: Record<string, string> = {
   fbp: "Facebook browser ID",
   fbc: "Facebook click cookie",
   marketingConsent: "Marketing consent",
-  learnerCreatedAt: "Signed up",
   utmCreatedAt: "UTM captured",
-  createdAt: "Created",
   updatedAt: "Updated",
   clientIp: "IP address",
   userAgent: "User agent",
@@ -130,7 +130,7 @@ function columnLabel(key: string) {
 }
 
 function formatValue(value: unknown) {
-  if (value == null || value === "") return "—";
+  if (value == null || value === "") return "N/A";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") return value.toLocaleString();
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
@@ -161,7 +161,11 @@ function columnsFor(items: LeadItem[]) {
       present.add(key);
     }
   }
-  return TABLE_COLUMNS.filter((key) => present.has(key)).slice(0, 7);
+  const preferred = TABLE_COLUMNS.filter((key) => present.has(key));
+  if (preferred.includes("learnerCreatedAt")) {
+    return preferred.filter((key) => key !== "createdAt").slice(0, 7);
+  }
+  return preferred.slice(0, 7);
 }
 
 function exportColumns(items: LeadItem[]) {
@@ -241,7 +245,7 @@ function abandonedOnly(result: PanelResult): PanelResult {
 }
 
 function totalCaption(result: PanelResult) {
-  if (!result.loadedAt) return result.status === "loading" ? "Loading" : "Not loaded";
+  if (!result.loadedAt) return result.status === "loading" ? "Loading..." : "Not loaded";
   if (result.total === null) return "Total was not in the response";
   const time = new Date(result.loadedAt).toLocaleTimeString(undefined, {
     hour: "numeric",
@@ -250,94 +254,15 @@ function totalCaption(result: PanelResult) {
   return `Loaded ${time}`;
 }
 
-function LeadDrawer({
-  lead,
-  title,
-  onClose,
-}: {
-  lead: LeadItem;
-  title: string;
-  onClose: () => void;
-}) {
-  const closeRef = useRef<HTMLButtonElement>(null);
-
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    closeRef.current?.focus();
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCloseRef.current();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  const contactFields: Array<[string, unknown]> = [
-    ["Email", lead.email],
-    ["Phone", [lead.countryCode, lead.phoneNumber].filter(Boolean).join(" ")],
-    ["Profession", lead.profession],
-    ["Age", lead.age],
-    ["Timezone", lead.timezone],
-    ["Marketing consent", lead.marketingConsent],
-    ["Signed up", lead.learnerCreatedAt],
-    ["Created", lead.createdAt],
-    ["Updated", lead.updatedAt],
-  ];
-  const contact = contactFields.filter(([, value]) => value != null && value !== "");
-
+function ExportIcon() {
   return (
-    <>
-      <button className="backdrop" type="button" aria-label="Close lead details" onClick={onClose} />
-      <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="lead-title">
-        <div className="drawer-head">
-          <div>
-            <p className="drawer-kicker">{title}</p>
-            <h2 id="lead-title">{formatValue(lead.name)}</h2>
-            {lead.status ? <span className={pillClass(String(lead.status))}>{String(lead.status)}</span> : null}
-          </div>
-          <button ref={closeRef} className="icon-button" type="button" onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
-        <p className="contact-line">
-          <strong>{formatValue(lead.email)}</strong>
-          {lead.phoneNumber ? ` · ${formatValue([lead.countryCode, lead.phoneNumber].filter(Boolean).join(" "))}` : ""}
-        </p>
-
-        <section className="detail-section">
-          <h3>Attribution</h3>
-          <p className="path">{attributionPath(lead)}</p>
-          <dl className="detail-grid">
-            {ATTRIBUTION_FIELDS.map(([key, label]) => (
-              <div key={key}>
-                <dt>{label}</dt>
-                <dd>{formatValue(lead[key])}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-
-        {contact.length ? (
-          <section className="detail-section">
-            <h3>Lead details</h3>
-            <dl className="detail-grid">
-              {contact.map(([label, value]) => (
-                <div key={String(label)}>
-                  <dt>{label}</dt>
-                  <dd>{formatValue(value)}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-        ) : null}
-      </aside>
-    </>
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
   );
 }
 
 function LeadPanel({
-  id,
   title,
   endpoint,
   filename,
@@ -345,17 +270,18 @@ function LeadPanel({
   onResult,
   selectedKey,
   onSelect,
+  stats,
   children,
   buildQuery,
 }: {
-  id: string;
   title: string;
   endpoint: string;
   filename: string;
   result: PanelResult;
   onResult: (result: PanelResult) => void;
   selectedKey: string | null;
-  onSelect: (lead: LeadItem, key: string) => void;
+  onSelect: (lead: LeadItem | null, key: string | null) => void;
+  stats: React.ReactNode;
   children: React.ReactNode;
   buildQuery: (page: number) => Query | string;
 }) {
@@ -367,6 +293,7 @@ function LeadPanel({
   async function load(query: Query) {
     const request = ++requestId.current;
     setExportNote("");
+    onSelect(null, null);
     onResult({ ...result, status: "loading", error: "" });
     try {
       const body = await requestLeads(endpoint, query);
@@ -439,136 +366,173 @@ function LeadPanel({
     result.total !== null
       ? result.page * result.limit < result.total
       : result.items.length >= result.limit && result.items.length > 0;
+  const selectedLead = result.items.find((row, index) => rowKey(row, index) === selectedKey) ?? null;
+  const colSpan = Math.max(columns.length + 1, 1);
 
   return (
-    <div role="tabpanel" id={id} aria-labelledby={`${id}-tab`}>
-      <div className="toolbar">
-        <form className="filters" onSubmit={onSubmit}>
-          {children}
-          <button className="button button-primary" type="submit" disabled={result.status === "loading"}>
-            {result.status === "loading" ? "Loading…" : "Load leads"}
-          </button>
-        </form>
+    <>
+      <form className="filters" onSubmit={onSubmit}>
+        {children}
         <div className="actions">
-          <button className="button button-secondary" type="button" onClick={() => void exportCsv()} disabled={exporting}>
-            {exporting ? "Exporting…" : "Export CSV"}
+          <button className="button button-primary" type="submit" disabled={result.status === "loading"}>
+            {result.status === "loading" ? "Loading..." : "Load Report"}
           </button>
         </div>
-      </div>
+      </form>
 
-      <div className="board-body">
-        {result.error ? (
-          <p className="error" role="alert">
-            {result.error}
-          </p>
-        ) : null}
-        {exportNote ? <p className="export-note">{exportNote}</p> : null}
+      {result.error ? (
+        <p className="error" role="alert">
+          {result.error}
+        </p>
+      ) : null}
 
-        {result.status === "idle" ? (
-          <div className="empty">
-            <strong>{title} are not loaded</strong>
-            <p>Choose filters, then load this list. Export uses the same filters and includes attribution columns.</p>
+      {stats}
+
+      <section className="board">
+        <div className="card-glass">
+          <div className="card-head">
+            <h2>
+              {title}
+              {result.total !== null ? ` (${result.total.toLocaleString()})` : ""}
+            </h2>
+            <button className="button button-export" type="button" onClick={() => void exportCsv()} disabled={exporting}>
+              <ExportIcon />
+              {exporting ? "Exporting..." : "Export CSV"}
+            </button>
           </div>
-        ) : null}
 
-        {result.status === "loading" && !result.loadedAt ? (
-          <div className="empty">
-            <strong>Loading {title.toLowerCase()}</strong>
-            <p>Fetching the current page.</p>
-          </div>
-        ) : null}
+          {exportNote ? <p className="export-note">{exportNote}</p> : null}
 
-        {result.loadedAt ? (
-          <>
-            {result.items.length === 0 ? (
-              <div className="empty">
-                <strong>No leads matched</strong>
-                <p>Try another range or date.</p>
-              </div>
-            ) : (
+          {result.status === "idle" ? (
+            <div className="empty">Select a range and load the report to see metrics.</div>
+          ) : null}
+
+          {result.status === "loading" && !result.loadedAt ? (
+            <div className="empty">Loading {title.toLowerCase()}...</div>
+          ) : null}
+
+          {result.loadedAt && result.items.length === 0 ? (
+            <div className="empty">No leads matched these filters.</div>
+          ) : null}
+
+          {result.loadedAt && result.items.length > 0 ? (
+            <>
               <div className="table-wrap">
-                <table>
+                <table className="leads-table">
                   <thead>
                     <tr>
                       {columns.map((column) => (
                         <th key={column}>{columnLabel(column)}</th>
                       ))}
-                      <th>Attribution</th>
+                      <th>Details</th>
                     </tr>
                   </thead>
                   <tbody>
                     {result.items.map((row, index) => {
                       const key = rowKey(row, index);
+                      const open = selectedKey === key;
                       return (
-                        <tr
-                          key={key}
-                          className={selectedKey === key ? "is-selected" : undefined}
-                          tabIndex={0}
-                          onClick={() => onSelect(row, key)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              onSelect(row, key);
-                            }
-                          }}
-                        >
-                          {columns.map((column) => (
-                            <td key={column} title={formatValue(row[column])}>
-                              {column === "status" && row.status ? (
-                                <span className={pillClass(String(row.status))}>{String(row.status)}</span>
-                              ) : (
-                                formatValue(row[column])
-                              )}
+                        <Fragment key={key}>
+                          <tr
+                            className={open ? "is-selected" : undefined}
+                            onClick={() => onSelect(open ? null : row, open ? null : key)}
+                          >
+                            {columns.map((column) => (
+                              <td key={column} title={formatValue(row[column])}>
+                                {column === "status" && row.status ? (
+                                  <span className={pillClass(String(row.status))}>{String(row.status)}</span>
+                                ) : (
+                                  formatValue(row[column])
+                                )}
+                              </td>
+                            ))}
+                            <td>
+                              <button
+                                className="text-button"
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  onSelect(open ? null : row, open ? null : key);
+                                }}
+                              >
+                                {open ? "Hide" : "View"}
+                              </button>
                             </td>
-                          ))}
-                          <td>
-                            <button
-                              className="text-button"
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onSelect(row, key);
-                              }}
-                            >
-                              View
-                            </button>
-                          </td>
-                        </tr>
+                          </tr>
+                          {open && selectedLead ? (
+                            <tr className="lead-details-row">
+                              <td colSpan={colSpan}>
+                                <p className="path">{attributionPath(selectedLead)}</p>
+                                <dl className="lead-details-panel">
+                                  {ATTRIBUTION_FIELDS.map(([field, label]) => (
+                                    <div className="lead-details-item" key={field}>
+                                      <dt>{label}</dt>
+                                      <dd>{formatValue(selectedLead[field])}</dd>
+                                    </div>
+                                  ))}
+                                  {["profession", "age", "timezone", "marketingConsent", "learnerCreatedAt", "createdAt"].map(
+                                    (field) =>
+                                      selectedLead[field] == null || selectedLead[field] === "" ? null : (
+                                        <div className="lead-details-item" key={field}>
+                                          <dt>{columnLabel(field)}</dt>
+                                          <dd>{formatValue(selectedLead[field])}</dd>
+                                        </div>
+                                      )
+                                  )}
+                                </dl>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
-            )}
-
-            <div className="pager">
-              <p>
-                Page {result.page}
-                {result.total !== null ? ` of ${Math.max(1, Math.ceil(result.total / result.limit))}` : ""}
-                {" · "}
-                {result.items.length.toLocaleString()} shown
-              </p>
-              <div className="pager-actions">
-                <button
-                  type="button"
-                  disabled={!applied || result.page <= 1 || result.status === "loading"}
-                  onClick={() => applied && void load({ ...applied, page: String(result.page - 1) })}
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  disabled={!applied || !hasNext || result.status === "loading"}
-                  onClick={() => applied && void load({ ...applied, page: String(result.page + 1) })}
-                >
-                  Next
-                </button>
+              <div className="pager">
+                <p>
+                  Page {result.page}
+                  {result.total !== null ? ` of ${Math.max(1, Math.ceil(result.total / result.limit))}` : ""}
+                  {" · "}
+                  {result.items.length.toLocaleString()} shown
+                </p>
+                <div className="pager-actions">
+                  <button
+                    type="button"
+                    disabled={!applied || result.page <= 1 || result.status === "loading"}
+                    onClick={() => applied && void load({ ...applied, page: String(result.page - 1) })}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!applied || !hasNext || result.status === "loading"}
+                    onClick={() => applied && void load({ ...applied, page: String(result.page + 1) })}
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
-            </div>
-          </>
-        ) : null}
-      </div>
-    </div>
+            </>
+          ) : null}
+        </div>
+      </section>
+    </>
+  );
+}
+
+function Totals({ kind, result }: { kind: TabId; result: PanelResult }) {
+  const label = kind === "signup" ? "Signup Leads" : "Partial Leads";
+  return (
+    <section className="metrics" aria-label="Lead totals">
+      <article className={`metric metric-${kind}`}>
+        <span className="metric-label">{label}</span>
+        <strong className={result.total === null ? "is-empty" : undefined}>
+          {result.total === null ? "—" : result.total.toLocaleString()}
+        </strong>
+        <small>{totalCaption(result)}</small>
+      </article>
+    </section>
   );
 }
 
@@ -578,28 +542,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span>{label}</span>
       {children}
     </label>
-  );
-}
-
-function Metric({
-  label,
-  result,
-  active,
-  onClick,
-}: {
-  label: string;
-  result: PanelResult;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button className={`metric${active ? " is-active" : ""}`} type="button" onClick={onClick} aria-pressed={active}>
-      <span className="metric-label">{label}</span>
-      <strong className={result.total === null ? "is-empty" : undefined}>
-        {result.total === null ? "—" : result.total.toLocaleString()}
-      </strong>
-      <small>{totalCaption(result)}</small>
-    </button>
   );
 }
 
@@ -629,190 +571,145 @@ export function Dashboard() {
   return (
     <div className="shell">
       <header className="topbar">
-        <div className="brand">
-          <div className="mark" aria-hidden="true">
-            W
+        <div className="topbar-inner">
+          <h1>Leads Dashboard</h1>
+          <div className="nav">
+            <button
+              className={`nav-btn${tab === "signup" ? " is-active" : ""}`}
+              type="button"
+              onClick={() => switchTab("signup")}
+            >
+              Signup Leads
+            </button>
+            <button
+              className={`nav-btn${tab === "partial" ? " is-active" : ""}`}
+              type="button"
+              onClick={() => switchTab("partial")}
+            >
+              Partial Leads
+            </button>
           </div>
-          <p className="brand-name">
-            Wealthymize <span>/ Leads</span>
-          </p>
         </div>
-        <p className="topbar-note">Lists stay empty until you load them.</p>
       </header>
 
       <main className="page">
-        <section className="metrics" aria-label="Lead totals">
-          <Metric label="Signup leads" result={signup} active={tab === "signup"} onClick={() => switchTab("signup")} />
-          <Metric
-            label="Partial leads"
-            result={abandonedPartial}
-            active={tab === "partial"}
-            onClick={() => switchTab("partial")}
-          />
-        </section>
-
-        <section className="board">
-          <div className="tabs" role="tablist" aria-label="Lead types">
-            <button
-              className="tab"
-              id="signup-panel-tab"
-              type="button"
-              role="tab"
-              aria-selected={tab === "signup"}
-              aria-controls="signup-panel"
-              tabIndex={tab === "signup" ? 0 : -1}
-              onClick={() => switchTab("signup")}
-            >
-              Signup leads
-              <span className="tab-count">{signup.total === null ? "—" : signup.total.toLocaleString()}</span>
-            </button>
-            <button
-              className="tab"
-              id="partial-panel-tab"
-              type="button"
-              role="tab"
-              aria-selected={tab === "partial"}
-              aria-controls="partial-panel"
-              tabIndex={tab === "partial" ? 0 : -1}
-              onClick={() => switchTab("partial")}
-            >
-              Partial leads
-              <span className="tab-count">
-                {abandonedPartial.total === null ? "—" : abandonedPartial.total.toLocaleString()}
-              </span>
-            </button>
-          </div>
-
-          <div hidden={tab !== "signup"}>
-            <LeadPanel
-              id="signup-panel"
-              title="Signup leads"
-              endpoint="/api/signup-leads"
-              filename="signup-leads"
-              result={signup}
-              onResult={setSignup}
-              selectedKey={selected?.tab === "signup" ? selected.key : null}
-              onSelect={(lead, key) => setSelected({ tab: "signup", lead, key })}
-              buildQuery={(page) => {
-                if (signupDraft.range === "custom" && (!signupDraft.startDate || !signupDraft.endDate)) {
-                  return "Choose a start and end date for a custom range.";
-                }
-                const query: Query = {
-                  range: signupDraft.range,
-                  page: String(page),
-                  limit: signupDraft.limit,
-                };
-                if (signupDraft.range === "custom") {
-                  query.startDate = signupDraft.startDate;
-                  query.endDate = signupDraft.endDate;
-                }
-                return query;
-              }}
-            >
-              <Field label="Range">
-                <select
-                  value={signupDraft.range}
-                  onChange={(event) => setSignupDraft((draft) => ({ ...draft, range: event.target.value }))}
-                >
-                  <option value="today">Today</option>
-                  <option value="yesterday">Yesterday</option>
-                  <option value="7days">Last 7 days</option>
-                  <option value="1month">Last month</option>
-                  <option value="custom">Custom range</option>
-                </select>
-              </Field>
-              {signupDraft.range === "custom" ? (
-                <>
-                  <Field label="Start">
-                    <input
-                      type="date"
-                      value={signupDraft.startDate}
-                      onChange={(event) =>
-                        setSignupDraft((draft) => ({ ...draft, startDate: event.target.value }))
-                      }
-                      required
-                    />
-                  </Field>
-                  <Field label="End">
-                    <input
-                      type="date"
-                      value={signupDraft.endDate}
-                      onChange={(event) => setSignupDraft((draft) => ({ ...draft, endDate: event.target.value }))}
-                      required
-                    />
-                  </Field>
-                </>
-              ) : null}
-              <Field label="Rows">
-                <select
-                  value={signupDraft.limit}
-                  onChange={(event) => setSignupDraft((draft) => ({ ...draft, limit: event.target.value }))}
-                >
-                  <option value="10">10</option>
-                  <option value="25">25</option>
-                  <option value="50">50</option>
-                </select>
-              </Field>
-            </LeadPanel>
-          </div>
-
-          <div hidden={tab !== "partial"}>
-            <LeadPanel
-              id="partial-panel"
-              title="Partial leads"
-              endpoint="/api/partial-leads"
-              filename="partial-leads"
-              result={abandonedPartial}
-              onResult={setPartial}
-              selectedKey={selected?.tab === "partial" ? selected.key : null}
-              onSelect={(lead, key) => setSelected({ tab: "partial", lead, key })}
-              buildQuery={(page) => ({
+        <div hidden={tab !== "signup"}>
+          <LeadPanel
+            title="Signup Leads"
+            endpoint="/api/signup-leads"
+            filename="signup-leads"
+            result={signup}
+            onResult={setSignup}
+            selectedKey={selected?.tab === "signup" ? selected.key : null}
+            onSelect={(lead, key) => setSelected(lead && key ? { tab: "signup", lead, key } : null)}
+            stats={<Totals kind="signup" result={signup} />}
+            buildQuery={(page) => {
+              if (signupDraft.range === "custom" && (!signupDraft.startDate || !signupDraft.endDate)) {
+                return "Choose a start and end date for a custom range.";
+              }
+              const query: Query = {
+                range: signupDraft.range,
                 page: String(page),
-                limit: partialDraft.limit,
-                status: "ABANDONED",
-                startDate: partialDraft.startDate,
-                endDate: partialDraft.endDate,
-              })}
-            >
-              <span className="scope-pill">Abandoned only</span>
-              <Field label="From">
-                <input
-                  type="date"
-                  value={partialDraft.startDate}
-                  onChange={(event) =>
-                    setPartialDraft((draft) => ({ ...draft, startDate: event.target.value }))
-                  }
-                />
-              </Field>
-              <Field label="To">
-                <input
-                  type="date"
-                  value={partialDraft.endDate}
-                  onChange={(event) => setPartialDraft((draft) => ({ ...draft, endDate: event.target.value }))}
-                />
-              </Field>
-              <Field label="Rows">
-                <select
-                  value={partialDraft.limit}
-                  onChange={(event) => setPartialDraft((draft) => ({ ...draft, limit: event.target.value }))}
-                >
-                  <option value="10">10</option>
-                  <option value="25">25</option>
-                  <option value="50">50</option>
-                </select>
-              </Field>
-            </LeadPanel>
-          </div>
-        </section>
-      </main>
+                limit: signupDraft.limit,
+              };
+              if (signupDraft.range === "custom") {
+                query.startDate = signupDraft.startDate;
+                query.endDate = signupDraft.endDate;
+              }
+              return query;
+            }}
+          >
+            <Field label="Range">
+              <select
+                value={signupDraft.range}
+                onChange={(event) => setSignupDraft((draft) => ({ ...draft, range: event.target.value }))}
+              >
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="7days">Last 7 days</option>
+                <option value="1month">Last month</option>
+                <option value="custom">Custom range</option>
+              </select>
+            </Field>
+            {signupDraft.range === "custom" ? (
+              <>
+                <Field label="Start date">
+                  <input
+                    type="date"
+                    value={signupDraft.startDate}
+                    onChange={(event) => setSignupDraft((draft) => ({ ...draft, startDate: event.target.value }))}
+                    required
+                  />
+                </Field>
+                <Field label="End date">
+                  <input
+                    type="date"
+                    value={signupDraft.endDate}
+                    onChange={(event) => setSignupDraft((draft) => ({ ...draft, endDate: event.target.value }))}
+                    required
+                  />
+                </Field>
+              </>
+            ) : null}
+            <Field label="Rows">
+              <select
+                value={signupDraft.limit}
+                onChange={(event) => setSignupDraft((draft) => ({ ...draft, limit: event.target.value }))}
+              >
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+              </select>
+            </Field>
+          </LeadPanel>
+        </div>
 
-      {selected ? (
-        <LeadDrawer
-          lead={selected.lead}
-          title={selected.tab === "signup" ? "Signup lead" : "Partial lead"}
-          onClose={() => setSelected(null)}
-        />
-      ) : null}
+        <div hidden={tab !== "partial"}>
+          <LeadPanel
+            title="Partial Leads"
+            endpoint="/api/partial-leads"
+            filename="partial-leads"
+            result={abandonedPartial}
+            onResult={setPartial}
+            selectedKey={selected?.tab === "partial" ? selected.key : null}
+            onSelect={(lead, key) => setSelected(lead && key ? { tab: "partial", lead, key } : null)}
+            stats={<Totals kind="partial" result={abandonedPartial} />}
+            buildQuery={(page) => ({
+              page: String(page),
+              limit: partialDraft.limit,
+              status: "ABANDONED",
+              startDate: partialDraft.startDate,
+              endDate: partialDraft.endDate,
+            })}
+          >
+            <span className="scope-pill">Abandoned only</span>
+            <Field label="Start date">
+              <input
+                type="date"
+                value={partialDraft.startDate}
+                onChange={(event) => setPartialDraft((draft) => ({ ...draft, startDate: event.target.value }))}
+              />
+            </Field>
+            <Field label="End date">
+              <input
+                type="date"
+                value={partialDraft.endDate}
+                onChange={(event) => setPartialDraft((draft) => ({ ...draft, endDate: event.target.value }))}
+              />
+            </Field>
+            <Field label="Rows">
+              <select
+                value={partialDraft.limit}
+                onChange={(event) => setPartialDraft((draft) => ({ ...draft, limit: event.target.value }))}
+              >
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+              </select>
+            </Field>
+          </LeadPanel>
+        </div>
+      </main>
     </div>
   );
 }
