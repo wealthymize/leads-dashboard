@@ -100,7 +100,7 @@ button {
 
 .filters {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
   gap: 1rem;
   align-items: end;
 }
@@ -319,8 +319,9 @@ button {
 
 table.leads-table {
   width: 100%;
+  min-width: 68rem;
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
   text-align: left;
 }
 

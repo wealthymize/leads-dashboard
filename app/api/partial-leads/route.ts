@@ -10,5 +10,6 @@ export async function GET(request: NextRequest) {
     "startDate",
     "endDate",
     "status",
+    "route",
   ]);
 }

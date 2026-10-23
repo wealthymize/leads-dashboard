@@ -35,10 +35,18 @@ const TABLE_COLUMNS = [
   "name",
   "email",
   "phoneNumber",
+  "age",
+  "profession",
   "status",
-  "utm_source",
   "route",
-  "updatedAt",
+];
+
+const ALWAYS_TABLE_COLUMNS = new Set(["age", "profession"]);
+
+const LANDING_ROUTES = [
+  { value: "/checkout", label: "Checkout" },
+  { value: "/meta/checkout", label: "Meta" },
+  { value: "/ggl/checkout", label: "Google" },
 ];
 
 const EXPORT_COLUMNS = [
@@ -157,15 +165,29 @@ function columnsFor(items: LeadItem[]) {
   const present = new Set<string>();
   for (const item of items) {
     for (const [key, value] of Object.entries(item)) {
-      if (value == null || value === "" || HIDDEN_COLUMNS.has(key)) continue;
-      present.add(key);
+      if (HIDDEN_COLUMNS.has(key)) continue;
+      if (ALWAYS_TABLE_COLUMNS.has(key) || (value != null && value !== "")) present.add(key);
     }
+  }
+  if (items.some((item) => "age" in item || "profession" in item)) {
+    present.add("age");
+    present.add("profession");
   }
   const preferred = TABLE_COLUMNS.filter((key) => present.has(key));
   if (preferred.includes("learnerCreatedAt")) {
-    return preferred.filter((key) => key !== "createdAt").slice(0, 7);
+    return preferred.filter((key) => key !== "createdAt");
   }
-  return preferred.slice(0, 7);
+  return preferred;
+}
+
+function applyRouteFilter(items: LeadItem[], route: string) {
+  const value = route.trim();
+  if (!value) return items;
+  return items.filter((item) => String(item.route ?? "").trim() === value);
+}
+
+function queryKeyWithoutPage(query: Query) {
+  return JSON.stringify({ ...query, page: "" });
 }
 
 function exportColumns(items: LeadItem[]) {
@@ -289,6 +311,7 @@ function LeadPanel({
   const [exporting, setExporting] = useState(false);
   const [exportNote, setExportNote] = useState("");
   const requestId = useRef(0);
+  const routeCache = useRef<{ key: string; items: LeadItem[] } | null>(null);
 
   async function load(query: Query) {
     const request = ++requestId.current;
@@ -296,18 +319,39 @@ function LeadPanel({
     onSelect(null, null);
     onResult({ ...result, status: "loading", error: "" });
     try {
-      const body = await requestLeads(endpoint, query);
+      const page = Number(query.page || 1);
+      const limit = Number(query.limit || 10);
+      const route = (query.route || "").trim();
+      let items: LeadItem[];
+      let total: number | null;
+      let responseKeys: string[] = [];
+
+      if (route) {
+        const key = queryKeyWithoutPage(query);
+        const cached = page > 1 && routeCache.current?.key === key ? routeCache.current.items : null;
+        const all = cached ?? applyRouteFilter(await fetchAllLeads(endpoint, query), route);
+        routeCache.current = { key, items: all };
+        total = all.length;
+        items = all.slice((Math.max(page, 1) - 1) * limit, Math.max(page, 1) * limit);
+      } else {
+        routeCache.current = null;
+        const body = await requestLeads(endpoint, query);
+        total = typeof body.total === "number" ? body.total : null;
+        items = (Array.isArray(body.items) ? body.items : []).map(flattenLead);
+        responseKeys = Array.isArray(body.responseKeys) ? body.responseKeys : [];
+      }
+
       if (request !== requestId.current) return;
       setApplied(query);
       onResult({
         status: "ready",
-        total: typeof body.total === "number" ? body.total : null,
-        items: (Array.isArray(body.items) ? body.items : []).map(flattenLead),
-        page: body.page || Number(query.page || 1),
-        limit: body.limit || Number(query.limit || 10),
+        total,
+        items,
+        page: Number.isFinite(page) && page > 0 ? page : 1,
+        limit: Number.isFinite(limit) && limit > 0 ? limit : 10,
         error: "",
         loadedAt: new Date().toISOString(),
-        responseKeys: Array.isArray(body.responseKeys) ? body.responseKeys : [],
+        responseKeys,
       });
     } catch (error) {
       if (request !== requestId.current) return;
@@ -338,7 +382,7 @@ function LeadPanel({
     setExporting(true);
     setExportNote("");
     try {
-      const items = await fetchAllLeads(endpoint, query);
+      const items = applyRouteFilter(await fetchAllLeads(endpoint, query), query.route || "");
       if (items.length === 0) {
         setExportNote("No leads matched these filters.");
         return;
@@ -545,6 +589,21 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function RouteField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <Field label="Route">
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">All routes</option>
+        {LANDING_ROUTES.map((route) => (
+          <option key={route.value} value={route.value}>
+            {route.label} ({route.value})
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
 export function Dashboard() {
   const [tab, setTab] = useState<TabId>("signup");
   const [signup, setSignup] = useState<PanelResult>(EMPTY);
@@ -555,11 +614,13 @@ export function Dashboard() {
     startDate: "",
     endDate: "",
     limit: "10",
+    route: "",
   });
   const [partialDraft, setPartialDraft] = useState({
     startDate: "",
     endDate: "",
     limit: "10",
+    route: "",
   });
   const abandonedPartial = abandonedOnly(partial);
 
@@ -611,6 +672,7 @@ export function Dashboard() {
                 range: signupDraft.range,
                 page: String(page),
                 limit: signupDraft.limit,
+                route: signupDraft.route,
               };
               if (signupDraft.range === "custom") {
                 query.startDate = signupDraft.startDate;
@@ -651,6 +713,10 @@ export function Dashboard() {
                 </Field>
               </>
             ) : null}
+            <RouteField
+              value={signupDraft.route}
+              onChange={(route) => setSignupDraft((draft) => ({ ...draft, route }))}
+            />
             <Field label="Rows">
               <select
                 value={signupDraft.limit}
@@ -680,6 +746,7 @@ export function Dashboard() {
               status: "ABANDONED",
               startDate: partialDraft.startDate,
               endDate: partialDraft.endDate,
+              route: partialDraft.route,
             })}
           >
             <span className="scope-pill">Abandoned only</span>
@@ -697,6 +764,10 @@ export function Dashboard() {
                 onChange={(event) => setPartialDraft((draft) => ({ ...draft, endDate: event.target.value }))}
               />
             </Field>
+            <RouteField
+              value={partialDraft.route}
+              onChange={(route) => setPartialDraft((draft) => ({ ...draft, route }))}
+            />
             <Field label="Rows">
               <select
                 value={partialDraft.limit}

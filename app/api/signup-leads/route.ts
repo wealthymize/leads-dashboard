@@ -10,5 +10,6 @@ export async function GET(request: NextRequest) {
     "endDate",
     "page",
     "limit",
+    "route",
   ]);
 }
