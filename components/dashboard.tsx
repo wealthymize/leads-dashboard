@@ -43,11 +43,13 @@ const TABLE_COLUMNS = [
 
 const ALWAYS_TABLE_COLUMNS = new Set(["age", "profession"]);
 
-const LANDING_ROUTES = [
-  { value: "/checkout", label: "Checkout" },
-  { value: "/meta/checkout", label: "Meta" },
-  { value: "/ggl/checkout", label: "Google" },
-];
+const KNOWN_ROUTES = ["/checkout", "/meta/checkout", "/ggl/checkout"];
+
+const ROUTE_LABELS: Record<string, string> = {
+  "/checkout": "Checkout",
+  "/meta/checkout": "Meta",
+  "/ggl/checkout": "Google",
+};
 
 const EXPORT_COLUMNS = [
   "name",
@@ -186,6 +188,39 @@ function applyRouteFilter(items: LeadItem[], route: string) {
   return items.filter((item) => String(item.route ?? "").trim() === value);
 }
 
+function collectRoutes(items: LeadItem[]) {
+  const routes = new Set<string>();
+  for (const item of items) {
+    const route = String(item.route ?? "").trim();
+    if (route) routes.add(route);
+  }
+  return [...routes];
+}
+
+function mergeRouteList(current: string[], extra: string[]) {
+  if (extra.length === 0) return current;
+  const next = new Set(current);
+  let changed = false;
+  for (const route of extra) {
+    if (!next.has(route)) {
+      next.add(route);
+      changed = true;
+    }
+  }
+  return changed ? [...next] : current;
+}
+
+function routeOptionLabel(route: string) {
+  return ROUTE_LABELS[route] ? `${ROUTE_LABELS[route]} (${route})` : route;
+}
+
+function orderedRouteOptions(routes: string[], selected: string) {
+  const extra = [...routes, selected].map((route) => route.trim()).filter(Boolean);
+  const unique = new Set([...KNOWN_ROUTES, ...extra]);
+  const rest = [...unique].filter((route) => !KNOWN_ROUTES.includes(route)).sort((a, b) => a.localeCompare(b));
+  return [...KNOWN_ROUTES.filter((route) => unique.has(route)), ...rest];
+}
+
 function queryKeyWithoutPage(query: Query) {
   return JSON.stringify({ ...query, page: "" });
 }
@@ -295,6 +330,7 @@ function LeadPanel({
   stats,
   children,
   buildQuery,
+  onDiscoverRoutes,
 }: {
   title: string;
   endpoint: string;
@@ -306,6 +342,7 @@ function LeadPanel({
   stats: React.ReactNode;
   children: React.ReactNode;
   buildQuery: (page: number) => Query | string;
+  onDiscoverRoutes?: (routes: string[]) => void;
 }) {
   const [applied, setApplied] = useState<Query | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -327,18 +364,21 @@ function LeadPanel({
       let responseKeys: string[] = [];
 
       if (route) {
-        const key = queryKeyWithoutPage(query);
+        const key = queryKeyWithoutPage({ ...query, route: "" });
         const cached = page > 1 && routeCache.current?.key === key ? routeCache.current.items : null;
-        const all = cached ?? applyRouteFilter(await fetchAllLeads(endpoint, query), route);
+        const all = cached ?? (await fetchAllLeads(endpoint, { ...query, route: "" }));
         routeCache.current = { key, items: all };
-        total = all.length;
-        items = all.slice((Math.max(page, 1) - 1) * limit, Math.max(page, 1) * limit);
+        onDiscoverRoutes?.(collectRoutes(all));
+        const filtered = applyRouteFilter(all, route);
+        total = filtered.length;
+        items = filtered.slice((Math.max(page, 1) - 1) * limit, Math.max(page, 1) * limit);
       } else {
         routeCache.current = null;
         const body = await requestLeads(endpoint, query);
         total = typeof body.total === "number" ? body.total : null;
         items = (Array.isArray(body.items) ? body.items : []).map(flattenLead);
         responseKeys = Array.isArray(body.responseKeys) ? body.responseKeys : [];
+        onDiscoverRoutes?.(collectRoutes(items));
       }
 
       if (request !== requestId.current) return;
@@ -382,7 +422,9 @@ function LeadPanel({
     setExporting(true);
     setExportNote("");
     try {
-      const items = applyRouteFilter(await fetchAllLeads(endpoint, query), query.route || "");
+      const all = await fetchAllLeads(endpoint, { ...query, route: "" });
+      onDiscoverRoutes?.(collectRoutes(all));
+      const items = applyRouteFilter(all, query.route || "");
       if (items.length === 0) {
         setExportNote("No leads matched these filters.");
         return;
@@ -589,14 +631,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function RouteField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function RouteField({
+  value,
+  onChange,
+  routes,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  routes: string[];
+}) {
+  const options = orderedRouteOptions(routes, value);
   return (
     <Field label="Route">
       <select value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">All routes</option>
-        {LANDING_ROUTES.map((route) => (
-          <option key={route.value} value={route.value}>
-            {route.label} ({route.value})
+        {options.map((route) => (
+          <option key={route} value={route}>
+            {routeOptionLabel(route)}
           </option>
         ))}
       </select>
@@ -622,6 +673,8 @@ export function Dashboard() {
     limit: "10",
     route: "",
   });
+  const [signupRoutes, setSignupRoutes] = useState<string[]>(KNOWN_ROUTES);
+  const [partialRoutes, setPartialRoutes] = useState<string[]>(KNOWN_ROUTES);
   const abandonedPartial = abandonedOnly(partial);
 
   function switchTab(next: TabId) {
@@ -663,6 +716,7 @@ export function Dashboard() {
             onResult={setSignup}
             selectedKey={selected?.tab === "signup" ? selected.key : null}
             onSelect={(lead, key) => setSelected(lead && key ? { tab: "signup", lead, key } : null)}
+            onDiscoverRoutes={(routes) => setSignupRoutes((current) => mergeRouteList(current, routes))}
             stats={<Totals kind="signup" result={signup} />}
             buildQuery={(page) => {
               if (signupDraft.range === "custom" && (!signupDraft.startDate || !signupDraft.endDate)) {
@@ -716,6 +770,7 @@ export function Dashboard() {
             <RouteField
               value={signupDraft.route}
               onChange={(route) => setSignupDraft((draft) => ({ ...draft, route }))}
+              routes={signupRoutes}
             />
             <Field label="Rows">
               <select
@@ -739,6 +794,7 @@ export function Dashboard() {
             onResult={setPartial}
             selectedKey={selected?.tab === "partial" ? selected.key : null}
             onSelect={(lead, key) => setSelected(lead && key ? { tab: "partial", lead, key } : null)}
+            onDiscoverRoutes={(routes) => setPartialRoutes((current) => mergeRouteList(current, routes))}
             stats={<Totals kind="partial" result={abandonedPartial} />}
             buildQuery={(page) => ({
               page: String(page),
@@ -767,6 +823,7 @@ export function Dashboard() {
             <RouteField
               value={partialDraft.route}
               onChange={(route) => setPartialDraft((draft) => ({ ...draft, route }))}
+              routes={partialRoutes}
             />
             <Field label="Rows">
               <select
